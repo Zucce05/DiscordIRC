@@ -98,17 +98,17 @@ namespace IrcRelayBot
                     {
                         if (message.Channel.Id != entry.Key)
                         {
-                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}", false, builder.Build());
-                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
-                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(attachmentUrls);
-                            //if (message.Attachments.Count > 0)
-                            //{
-                            //    foreach (Attachment a in attachments)
-                            //    {
-                            //        //attachmentUrls += $"\n{a.Url.ToString()}";
-                            //        await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(a.Url);
-                            //    }
-                            //}
+                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}");
+                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
+                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(attachmentUrls);
+                            if (message.Attachments.Count > 0)
+                            {
+                                foreach (Attachment a in attachments)
+                                {
+                                    //attachmentUrls += $"\n{a.Url.ToString()}";
+                                    await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(a.Url);
+                                }
+                            }
                         }
                     }
                 }
@@ -153,6 +153,21 @@ namespace IrcRelayBot
             if (message.Content.StartsWith("+invite"))
             {
                 await message.Channel.SendMessageAsync($"You can invite the bot by using this link: https://discordapp.com/api/oauth2/authorize?client_id=581557457864884225&permissions=116736&scope=bot");
+            }
+            if (message.Content.StartsWith("+help"))
+            {
+                string helpMessage = $"```\nEveryone:\n\t+invite: Provides an invite link to invite the bot to your server.\n\t+help: Displays this help text" +
+                    $"\n\t+topic: Displays the topic (keyword) for the irc linked channel" +
+                    $"\nOwner only:\n\t+addirc: Adds a channel to an irc topic\n\t\tUsage: +addirc <topic>\n\t+removeirc: Removes the channel from the irc topic it's a part of\n```";
+                await message.Channel.SendMessageAsync(helpMessage);
+            }
+            if (message.Content.StartsWith("+topic"))
+            {
+                if (ircDictionary.ContainsKey(message.Channel.Id))
+                {
+                    ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel channel);
+                    await message.Channel.SendMessageAsync($"Current channel topic: {channel.Topic}");
+                }
             }
         }
 
