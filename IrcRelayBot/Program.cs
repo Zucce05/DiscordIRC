@@ -64,15 +64,78 @@ namespace IrcRelayBot
         /// <returns></returns>
         private async Task MessageReceived(SocketMessage message)
         {
-            // First condition, only pay attention if the channel is used by the bot
-            if (!message.Author.IsBot && ircDictionary.ContainsKey(message.Channel.Id))
+            bool isBotCommand = false;
+            // Condition, check for server owner key comamnds for bot configuration
+            if (message.Author.Id == ((SocketTextChannel)message.Channel).Guild.OwnerId)
+            {
+                if (message.Content.StartsWith("+addirc"))
+                {
+                    isBotCommand = true;
+                    if (!ircDictionary.ContainsKey(message.Channel.Id))
+                    {
+                        string msg = message.Content.Substring(1).ToLower();
+                        string[] substring = msg.Split(" ", 2);
+
+                        IrcChannel newChannel = new IrcChannel();
+                        newChannel.Topic = substring[1].ToLower();
+                        newChannel.GuildID = ((IGuildChannel)message.Channel).GuildId;
+                        ircDictionary.Add(message.Channel.Id, newChannel);
+                        await message.Channel.SendMessageAsync($"Channel now a linked to Discord IRC using the topic: \"**{substring[1]}**\".");
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync($"This channel is already linked to a Discord IRC global chat.\nUse ``+removeirc`` to remove and reassign this channel.");
+                    }
+                }
+                if (message.Content.StartsWith("+removeirc"))
+                {
+                    isBotCommand = true;
+                    string msg = message.Content.Substring(1).ToLower();
+                    string[] substring = msg.Split(" ", 2);
+
+                    ircDictionary.Remove(message.Channel.Id);
+                    await message.Channel.SendMessageAsync($"Channel is no longer a Discord IRC linked channel.");
+                }
+                using (StreamWriter file = File.CreateText("json/IrcChannel.json"))
+                {
+                    JsonSerializer serializer = new JsonSerializer();
+                    serializer.Serialize(file, ircDictionary);
+                }
+            }
+            // General command to show the bot invite link
+            // TODO: Add a new category of bot command with prefix to allow for help, invite, and other commands
+            if (message.Content.StartsWith("+invite"))
+            {
+                isBotCommand = true;
+                await message.Channel.SendMessageAsync($"You can invite the bot by using this link: https://discordapp.com/api/oauth2/authorize?client_id=581557457864884225&permissions=116736&scope=bot");
+            }
+            if (message.Content.StartsWith("+help"))
+            {
+                isBotCommand = true;
+                string helpMessage = $"```\nEveryone:\n\t+invite: Provides an invite link to invite the bot to your server.\n\t+help: Displays this help text" +
+                    $"\n\t+topic: Displays the topic (keyword) for the irc linked channel" +
+                    $"\nOwner only:\n\t+addirc: Adds a channel to an irc topic\n\t\tUsage: +addirc <topic>\n\t+removeirc: Removes the channel from the irc topic it's a part of\n```";
+                await message.Channel.SendMessageAsync(helpMessage);
+            }
+            if (message.Content.StartsWith("+topic"))
+            {
+                isBotCommand = true;
+                if (ircDictionary.ContainsKey(message.Channel.Id))
+                {
+                    ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel channel);
+                    await message.Channel.SendMessageAsync($"Current channel topic: {channel.Topic}");
+                }
+            }
+
+            // Condition, only pay attention if the channel is used by the bot
+            if (!message.Author.IsBot && ircDictionary.ContainsKey(message.Channel.Id) && !isBotCommand)
             {
                 ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel channelInfo);
                 string channelTopic = channelInfo.Topic;
                 string messageAuthor = message.Author.Username;
                 string messageServer = ((IGuildChannel)message.Channel).Guild.Name.ToString();
                 IReadOnlyCollection<IAttachment> attachments = message.Attachments;
-                string returnMessage = $"{messageAuthor} in {messageServer}:\n{message.Content}";
+                string returnMessage = $"{messageAuthor} in {messageServer}:\n**{message.Content}**";
                 string attachmentUrls = string.Empty;
 
                 if (message.Attachments.Count > 0)
@@ -98,8 +161,8 @@ namespace IrcRelayBot
                     {
                         if (message.Channel.Id != entry.Key)
                         {
-                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}");
-                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
+                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}");
+                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
                             //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(attachmentUrls);
                             if (message.Attachments.Count > 0)
                             {
@@ -111,62 +174,6 @@ namespace IrcRelayBot
                             }
                         }
                     }
-                }
-            }
-            // Second condition, check for server owner key comamnds for bot configuration
-            if (message.Author.Id == ((SocketTextChannel)message.Channel).Guild.OwnerId)
-            {
-                if (message.Content.StartsWith("+addirc"))
-                {
-                    if (!ircDictionary.ContainsKey(message.Channel.Id))
-                    {
-                        string msg = message.Content.Substring(1).ToLower();
-                        string[] substring = msg.Split(" ", 2);
-
-                        IrcChannel newChannel = new IrcChannel();
-                        newChannel.Topic = substring[1].ToLower();
-                        newChannel.GuildID = ((IGuildChannel)message.Channel).GuildId;
-                        ircDictionary.Add(message.Channel.Id, newChannel);
-                        await message.Channel.SendMessageAsync($"Channel now a linked to Discord IRC using the topic: \"**{substring[1]}**\".");
-                    }
-                    else
-                    {
-                        await message.Channel.SendMessageAsync($"This channel is already linked to a Discord IRC global chat.\nUse ``+removeirc`` to remove and reassign this channel.");
-                    }
-                }
-                if (message.Content.StartsWith("+removeirc"))
-                {
-                    string msg = message.Content.Substring(1).ToLower();
-                    string[] substring = msg.Split(" ", 2);
-
-                    ircDictionary.Remove(message.Channel.Id);
-                    await message.Channel.SendMessageAsync($"Channel is no longer a Discord IRC linked channel.");
-                }
-                using (StreamWriter file = File.CreateText("json/IrcChannel.json"))
-                {
-                    JsonSerializer serializer = new JsonSerializer();
-                    serializer.Serialize(file, ircDictionary);
-                }
-            }
-            // General command to show the bot invite link
-            // TODO: Add a new category of bot command with prefix to allow for help, invite, and other commands
-            if (message.Content.StartsWith("+invite"))
-            {
-                await message.Channel.SendMessageAsync($"You can invite the bot by using this link: https://discordapp.com/api/oauth2/authorize?client_id=581557457864884225&permissions=116736&scope=bot");
-            }
-            if (message.Content.StartsWith("+help"))
-            {
-                string helpMessage = $"```\nEveryone:\n\t+invite: Provides an invite link to invite the bot to your server.\n\t+help: Displays this help text" +
-                    $"\n\t+topic: Displays the topic (keyword) for the irc linked channel" +
-                    $"\nOwner only:\n\t+addirc: Adds a channel to an irc topic\n\t\tUsage: +addirc <topic>\n\t+removeirc: Removes the channel from the irc topic it's a part of\n```";
-                await message.Channel.SendMessageAsync(helpMessage);
-            }
-            if (message.Content.StartsWith("+topic"))
-            {
-                if (ircDictionary.ContainsKey(message.Channel.Id))
-                {
-                    ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel channel);
-                    await message.Channel.SendMessageAsync($"Current channel topic: {channel.Topic}");
                 }
             }
         }
