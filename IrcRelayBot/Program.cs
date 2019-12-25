@@ -1,4 +1,5 @@
 ﻿using Discord;
+using Discord.Webhook;
 using Discord.WebSocket;
 using IrcRelayBot.classes;
 using IrcRelayBot.json;
@@ -101,6 +102,44 @@ namespace IrcRelayBot
                     JsonSerializer serializer = new JsonSerializer();
                     serializer.Serialize(file, ircDictionary);
                 }
+
+                if (message.Content.StartsWith($"+addwebhook"))
+                {
+                    isBotCommand = true;
+                    if (ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel value))
+                    {
+                        string[] substring = message.Content.Split(" ", 2);
+                        value.WebhookString = substring[1];
+                        using (StreamWriter file = File.CreateText("json/IrcChannel.json"))
+                        {
+                            JsonSerializer serializer = new JsonSerializer();
+                            serializer.Serialize(file, ircDictionary);
+                        }
+                        await message.Channel.SendMessageAsync($"Webhook added");
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync($"Faild to add webhook:\n\tEither this channel is not linked to Discord IRC, or there was another error.\n\t Please verify channel is linked then try again.");
+                    }
+                }
+                if (message.Content.StartsWith($"+removewebhook"))
+                {
+                    isBotCommand = true;
+                    if (ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel value))
+                    {
+                        value.WebhookString = string.Empty;
+                        using (StreamWriter file = File.CreateText("json/IrcChannel.json"))
+                        {
+                            JsonSerializer serializer = new JsonSerializer();
+                            serializer.Serialize(file, ircDictionary);
+                        }
+                        await message.Channel.SendMessageAsync($"Webhook removed");
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync($"Faild to remove webhook:\n\tEither this channel is not linked to Discord IRC, or there was another error.\n\t Please verify channel is linked then try again.");
+                    }
+                }
             }
             // General command to show the bot invite link
             // TODO: Add a new category of bot command with prefix to allow for help, invite, and other commands
@@ -112,9 +151,18 @@ namespace IrcRelayBot
             if (message.Content.StartsWith("+help"))
             {
                 isBotCommand = true;
-                string helpMessage = $"```\nEveryone:\n\t+invite: Provides an invite link to invite the bot to your server.\n\t+help: Displays this help text" +
-                    $"\n\t+topic: Displays the topic (keyword) for the irc linked channel" +
-                    $"\nOwner only:\n\t+addirc: Adds a channel to an irc topic\n\t\tUsage: +addirc <topic>\n\t+removeirc: Removes the channel from the irc topic it's a part of\n```";
+                string helpMessage = $"```\nEveryone:\n\t+invite: Provides an invite link to invite the bot to your server.\n\t+help: Displays this help text";
+                helpMessage += $"\n\t+topic: Displays the topic (keyword) for the irc linked channel";
+                helpMessage += $"\n\t+linked: Displays a list of all linked servers";
+                helpMessage += $"\n\t+topics: Displays a list of all topics, and how many servers are joined to each";
+
+                helpMessage += $"\nOwner only:";
+                helpMessage += $"\n\t+addirc: Adds a channel to an irc topic\n\t\tUsage: +addirc <topic>";
+                helpMessage+= "\n\t+removeirc: Removes the channel from the irc topic it's a part of";
+                helpMessage += $"\n\t+addwebhook\n\t\tUsage: +addwebhook <webhook URL>";
+                helpMessage += $"\n\t+removewebhook";
+
+                helpMessage += "\n```";
                 await message.Channel.SendMessageAsync(helpMessage);
             }
             if (message.Content.StartsWith("+topic"))
@@ -126,16 +174,64 @@ namespace IrcRelayBot
                     await message.Channel.SendMessageAsync($"Current channel topic: {channel.Topic}");
                 }
             }
+            if (message.Content.StartsWith("+linked"))
+            {
+                isBotCommand = true;
+                int total = 0;
+                if (ircDictionary.ContainsKey(message.Channel.Id))
+                {
+                    ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel source);
+                    string sendMessage = "```\nLinked Servers:\n";
+                    foreach (KeyValuePair<ulong, IrcChannel> entry in ircDictionary)
+                    {
+                        if (entry.Value.Topic == source.Topic)
+                        {
+                            sendMessage += $"{client.GetGuild(entry.Value.GuildID).Name}\n";
+                            total++;
+                        }
+                    }
+                    sendMessage += $"Total: {total}\n```";
+                    await message.Channel.SendMessageAsync(sendMessage);
+                }
+                else
+                {
+                    await message.Channel.SendMessageAsync("This channel currently isn't linked to anything or anywhere.");
+                }
+            }
+            if (message.Content.StartsWith($"+topics"))
+            {
+                isBotCommand = true;
+                Dictionary<string, int> topics = new Dictionary<string, int>();
+                foreach (KeyValuePair<ulong, IrcChannel> entry in ircDictionary)
+                {
+                    if(topics.ContainsKey(entry.Value.Topic))
+                    {
+                        topics[entry.Value.Topic] = topics[entry.Value.Topic] += 1;
+                    }
+                    else
+                    {
+                        topics.Add(entry.Value.Topic, 1);
+                    }
+                }
+
+                string sendMessage = $"```**Current Topics**\n";
+                foreach (KeyValuePair<string, int> topicCounts in topics)
+                {
+                    sendMessage += $"Topic: {topicCounts.Key} | Servers Linked: {topicCounts.Value}\n";
+                }
+                sendMessage += "```";
+                await message.Channel.SendMessageAsync(sendMessage);
+            }
 
             // Condition, only pay attention if the channel is used by the bot
             if (!message.Author.IsBot && ircDictionary.ContainsKey(message.Channel.Id) && !isBotCommand)
             {
                 ircDictionary.TryGetValue(message.Channel.Id, out IrcChannel channelInfo);
                 string channelTopic = channelInfo.Topic;
-                string messageAuthor = message.Author.Username;
+                //string messageAuthor = message.Author.Username;
                 string messageServer = ((IGuildChannel)message.Channel).Guild.Name.ToString();
                 IReadOnlyCollection<IAttachment> attachments = message.Attachments;
-                string returnMessage = $"{messageAuthor} in {messageServer}:\n**{message.Content}**";
+                //string returnMessage = $"{messageAuthor} in {messageServer}:\n**{message.Content}**";
                 string attachmentUrls = string.Empty;
 
                 if (message.Attachments.Count > 0)
@@ -146,14 +242,22 @@ namespace IrcRelayBot
                     }
                 }
 
-                EmbedBuilder builder = new EmbedBuilder()
-                {
+                //EmbedBuilder builder = new EmbedBuilder()
+                //{
 
-                    ThumbnailUrl = $"{message.Author.GetAvatarUrl()}",
-                    Title = $"{messageAuthor} from server {messageServer}",
-                    Description = $"{message.Content}",
-                    //ImageUrl = $"{attachmentUrls}",
-                };
+                //    ThumbnailUrl = $"{message.Author.GetAvatarUrl()}",
+                //    Title = $"User: {messageAuthor}\nServer: {messageServer}",
+                //    Description = $"{message.Content}",
+                //    //ImageUrl = $"{attachmentUrls}",
+                //};
+                //if (message.Attachments.Count > 0)
+                //{
+                //    foreach (Attachment a in attachments)
+                //    {
+                //        attachmentUrls += $"\n{a.Url.ToString()}";
+                //        //builder.AddField(string.Empty, a);
+                //    }
+                //}
 
                 foreach (KeyValuePair<ulong, IrcChannel> entry in ircDictionary)
                 {
@@ -161,22 +265,47 @@ namespace IrcRelayBot
                     {
                         if (message.Channel.Id != entry.Key)
                         {
-                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}");
-                            await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
-                            //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(attachmentUrls);
-                            if (message.Attachments.Count > 0)
+                            
+                            if (entry.Value.WebhookString != string.Empty)
                             {
-                                foreach (Attachment a in attachments)
+                                using (DiscordWebhookClient discordWebhookClient = new DiscordWebhookClient(entry.Value.WebhookString))
                                 {
-                                    //attachmentUrls += $"\n{a.Url.ToString()}";
-                                    await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(a.Url);
+                                    string jsonMessage = string.Empty;
+
+                                    try
+                                    {
+                                        await discordWebhookClient.SendMessageAsync($"{message.Content + "\n" + attachmentUrls}", false, null, $"{message.Author.Username}", $"{message.Author.GetAvatarUrl()}");
+                                    }
+                                    catch (System.InvalidOperationException e)
+                                    {
+                                        await Log(new LogMessage(LogSeverity.Error, "Send Webhook Message", e.Message));
+                                        await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"**User: {message.Author.Username}\nServer: {messageServer}**\n{message.Content}\n{attachmentUrls}");
+                                    }
+
                                 }
                             }
+                            else
+                            {
+                                //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"{returnMessage}");
+                                //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(string.Empty, false, builder.Build());
+                                //await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(message.Content, false, builder.Build());
+                                await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync($"**User: {message.Author.Username}\nServer: {messageServer}**\n{message.Content}\n{attachmentUrls}");
+                            }
+
+                            //if (message.Attachments.Count > 0)
+                            //{
+                            //    foreach (Attachment a in attachments)
+                            //    {
+                            //        //attachmentUrls += $"\n{a.Url.ToString()}";
+                            //        await client.GetGuild(entry.Value.GuildID).GetTextChannel((entry.Key)).SendMessageAsync(a.Url);
+                            //    }
+                            //}
                         }
                     }
                 }
             }
         }
+
 
         // TODO: Convert to text file, add my own logging to this
         /// <summary>
