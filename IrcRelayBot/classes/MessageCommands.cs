@@ -275,8 +275,17 @@ namespace IrcRelayBot.classes
                 await message.Channel.SendMessageAsync(sendMessage);
             }
 
+            bool oldEnough = false;
+            if (((SocketTextChannel)message.Channel).Guild.GetUser(message.Author.Id).JoinedAt.Value.UtcDateTime < DateTime.UtcNow.AddDays(-2))
+            {
+                oldEnough = true;
+            }
+
+
+
+
             // Condition, only pay attention if the channel is used by the bot
-            if (!message.Author.IsBot && ircDictionary.ContainsKey(message.Channel.Id) && !isBotCommand)
+            if (!message.Author.IsBot && ircDictionary.ContainsKey(message.Channel.Id) && !isBotCommand && oldEnough)
             {
                 IrcMessageOriginal originalMessage = new IrcMessageOriginal
                 {
